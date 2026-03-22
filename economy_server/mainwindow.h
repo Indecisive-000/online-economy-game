@@ -7,6 +7,10 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QTcpServer>
+#include <QTcpSocket>
+#include <QMap>
+
 
 class StocksEngine : public QObject{
     Q_OBJECT
@@ -24,6 +28,12 @@ signals:
 private slots:
     void onTimerPricesTick();
 
+    void onNewConnection();
+
+    void onClientReadyRead();
+
+    void onClientDisconnected();
+
 private:
     int money;
     QVector<int> stocks;
@@ -31,6 +41,13 @@ private:
     QTimer *timerPrices;
 
     static const int STOCK_COUNT = 5;
+
+    QTcpServer *tcpServer;
+    QMap<QTcpSocket*, QByteArray> clientBuffers;
+
+    void processCommand(QTcpSocket *socket, const QJsonObject &cmd);
+    void sendError(QTcpSocket *socket, const QString &msg);
+    void broadcastStatus();
 
 };
 
