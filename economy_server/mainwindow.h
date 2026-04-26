@@ -10,6 +10,8 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QMap>
+#include <QSqlDatabase>
+#include <QSqlQuery>
 
 
 class StocksEngine : public QObject{
@@ -44,10 +46,16 @@ private:
 
     QTcpServer *tcpServer;
     QMap<QTcpSocket*, QByteArray> clientBuffers;
+    QSqlDatabase db;
 
     void processCommand(QTcpSocket *socket, const QJsonObject &cmd);
     void sendError(QTcpSocket *socket, const QString &msg);
     void broadcastStatus();
+
+    void initDb();
+    void loadState();
+    void savePlayerState();
+    void savePriceHistory();
 
 };
 
