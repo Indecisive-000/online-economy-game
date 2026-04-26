@@ -9,13 +9,15 @@
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
+    , socket (new QTcpSocket(this))
+    , timerPrices(nullptr)
 {
     ui->setupUi(this);
 
     connect(socket, &QTcpSocket::connected, this, &MainWindow::onSocketConnected);
     connect(socket, &QTcpSocket::disconnected, this, &MainWindow::onSocketDisconnected);
     connect(socket, &QTcpSocket::readyRead, this, &MainWindow::onSocketReadyRead);
-    connect(socket, QOverload<QAbstractSocket::SocketError>::of(&QAbstractSocket::error), this *MainWindow::onSocketError);
+    connect(socket, &QAbstractSocket::errorOccurred, this, &MainWindow::onSocketError);
 
     socket->connectToHost(QHostAddress::LocalHost, 5555);
 
@@ -69,7 +71,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     timerPrices = new QTimer(this);
     timerPrices->setInterval(1000);
-    connect(timerPrices, QTimer::timeout, this, &MainWindow::on_timerPrices_tick);
+    connect(timerPrices, &QTimer::timeout, this, &MainWindow::on_timerPrices_tick);
     timerPrices->start();
 }
 
@@ -116,7 +118,7 @@ void MainWindow::parseMessage(const QByteArray &line){
         QJsonArray pricesArr = obj["price"].toArray();
         QJsonArray stocksArr = obj["stocks"].toArray();
 
-        for (int i = 0; i < STOCK_COUNT && i < priceArr.size(); i++){
+        for (int i = 0; i < STOCK_COUNT && i < pricesArr.size(); i++){
             prices[i] = pricesArr[i].toInt();
             stocks[i] = stocksArr[i].toInt();
             sellSliders[i]->setMaximum(stocks[i]);
@@ -124,7 +126,7 @@ void MainWindow::parseMessage(const QByteArray &line){
 
     }
     else if (type == "priceUpdate"){
-        QJsonArray pricesArr = obj["peices"].toArray();
+        QJsonArray pricesArr = obj["prices"].toArray();
         for (int i = 0; i < STOCK_COUNT && i < pricesArr.size(); i++){
             prices[i] = pricesArr[i].toInt();
 
@@ -161,7 +163,7 @@ void MainWindow::parseMessage(const QByteArray &line){
 }
 
 void MainWindow::updateUIFromServer(int money, const QVector<int> &prices, const QVector<int> &stocks){
-    ui->money->setText("money: "+QString::number(money+"$"));
+    ui->money->setText("money: "+QString::number(money)+"$");
     for (int i=0; i<STOCK_COUNT; i++){
         sellSliders[i]->setMaximum(stocks[i]);
         sellSliders[i]->setValue(0);
