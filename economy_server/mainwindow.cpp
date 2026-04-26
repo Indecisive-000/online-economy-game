@@ -5,6 +5,8 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QHostAddress>
+#include <QSqlError>
+#include <QDateTime>
 
 
 StocksEngine::StocksEngine(QObject *parent) : QObject(parent){
@@ -32,6 +34,7 @@ StocksEngine::StocksEngine(QObject *parent) : QObject(parent){
 
     srand(QTime::currentTime().msec());
 
+    initDb();
 }
 
 StocksEngine::~StocksEngine(){
@@ -53,9 +56,8 @@ void StocksEngine::onTimerPricesTick(){
         }
     }
     emit pricesUpdated();
-
+    savePriceHistory();
     broadcastStatus();
-
 }
 
 // network logic
@@ -128,6 +130,7 @@ void StocksEngine::processCommand(QTcpSocket *socket, const QJsonObject &cmd){
             response["type"] = "sellResult";
             response["success"] = true;
             response["money"] = money;
+            savePlayerState();
         }
         else{
             response["type"] = "sellResult";
@@ -145,6 +148,7 @@ void StocksEngine::processCommand(QTcpSocket *socket, const QJsonObject &cmd){
             response["type"] = "buyResult";
             response["success"] = true;
             response["money"] = money;
+            savePlayerState();
         }
         else{
             response["type"] = "buyResult";
@@ -237,5 +241,72 @@ QJsonDocument StocksEngine::getStatus() const{
     root["stocks"] = stocksArr;
 
     return QJsonDocument(root);
+}
 
+void StocksEngine::initDb()
+{
+    db = QSqlDatabase::addDatabase("QSQLITE");
+    db.setDatabaseName("economy.db");
+    if (!db.open()) {
+        qDebug() << "DB open failed:" << db.lastError().text();
+        return;
+    }
+
+    QSqlQuery q;
+    q.exec("CREATE TABLE IF NOT EXISTS player_state ("
+           "id INTEGER PRIMARY KEY, money INTEGER, stocks TEXT, prices TEXT)");
+    q.exec("CREATE TABLE IF NOT EXISTS price_history ("
+           "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+           "timestamp INTEGER, stock_index INTEGER, price INTEGER)");
+
+    loadState();
+}
+
+void StocksEngine::loadState()
+{
+    QSqlQuery q("SELECT money, stocks, prices FROM player_state WHERE id=1");
+    if (!q.next()) return;
+
+    money = q.value(0).toInt();
+
+    QJsonDocument stocksDoc = QJsonDocument::fromJson(q.value(1).toString().toUtf8());
+    QJsonArray stocksArr = stocksDoc.array();
+    for (int i = 0; i < STOCK_COUNT && i < stocksArr.size(); i++)
+        stocks[i] = stocksArr[i].toInt();
+
+    QJsonDocument pricesDoc = QJsonDocument::fromJson(q.value(2).toString().toUtf8());
+    QJsonArray pricesArr = pricesDoc.array();
+    for (int i = 0; i < STOCK_COUNT && i < pricesArr.size(); i++)
+        prices[i] = pricesArr[i].toInt();
+
+    qDebug() << "State loaded: money=" << money;
+}
+
+void StocksEngine::savePlayerState()
+{
+    QJsonArray stocksArr, pricesArr;
+    for (int i = 0; i < STOCK_COUNT; i++) {
+        stocksArr.append(stocks[i]);
+        pricesArr.append(prices[i]);
+    }
+    QSqlQuery q;
+    q.prepare("INSERT OR REPLACE INTO player_state (id, money, stocks, prices) "
+              "VALUES (1, ?, ?, ?)");
+    q.addBindValue(money);
+    q.addBindValue(QString(QJsonDocument(stocksArr).toJson(QJsonDocument::Compact)));
+    q.addBindValue(QString(QJsonDocument(pricesArr).toJson(QJsonDocument::Compact)));
+    q.exec();
+}
+
+void StocksEngine::savePriceHistory()
+{
+    qint64 ts = QDateTime::currentSecsSinceEpoch();
+    QSqlQuery q;
+    for (int i = 0; i < STOCK_COUNT; i++) {
+        q.prepare("INSERT INTO price_history (timestamp, stock_index, price) VALUES (?, ?, ?)");
+        q.addBindValue(ts);
+        q.addBindValue(i);
+        q.addBindValue(prices[i]);
+        q.exec();
+    }
 }
